@@ -20,11 +20,14 @@ function readOnlyResultToBool(retval) {
   throw new Error("Unexpected return type from contract");
 }
 
+/**
+ * Calls verify() on the Soroban contract via simulation (read-only, no signing needed).
+ * sourcePublicKey must come from Freighter (getPublicKey()).
+ */
 export async function verifyProofOnSoroban({
   rpcUrl,
   networkPassphrase,
   contractId,
-  sourceSecret,
   sourcePublicKey,
   proofHex,
   publicHex,
@@ -38,36 +41,13 @@ export async function verifyProofOnSoroban({
     allowHttp: rpcUrl.startsWith("http://"),
   });
 
-  const trimmedSecret = (sourceSecret || "").trim();
-  const trimmedPublic = (sourcePublicKey || "").trim();
-  const looksLikePlaceholder = trimmedSecret.includes("REPLACE_WITH");
-
-  let resolvedPublicKey = "";
-  if (trimmedSecret && !looksLikePlaceholder) {
-    try {
-      resolvedPublicKey = StellarSdk.Keypair.fromSecret(trimmedSecret).publicKey();
-    } catch {
-      if (!trimmedPublic) {
-        throw new Error(
-          "Source secret key is invalid. Provide a valid testnet secret (SB...) or leave secret blank and set source public key (GD...)."
-        );
-      }
-    }
+  try {
+    StellarSdk.Keypair.fromPublicKey(sourcePublicKey);
+  } catch {
+    throw new Error("Public key inválida. Conecta Freighter primero.");
   }
 
-  if (!resolvedPublicKey) {
-    if (!trimmedPublic) {
-      throw new Error("Provide a source secret key (SB...) or source public key (GD...).");
-    }
-    try {
-      StellarSdk.Keypair.fromPublicKey(trimmedPublic);
-    } catch {
-      throw new Error("Source public key is invalid. Use a valid GD... key.");
-    }
-    resolvedPublicKey = trimmedPublic;
-  }
-
-  const account = await server.getAccount(resolvedPublicKey);
+  const account = await server.getAccount(sourcePublicKey);
 
   const op = StellarSdk.Operation.invokeContractFunction({
     contract: contractId.trim(),
@@ -93,11 +73,7 @@ export async function verifyProofOnSoroban({
     throw new Error(typeof err === "string" ? err : JSON.stringify(err));
   }
 
-  const result = simulation.result?.retval;
-  const verified = readOnlyResultToBool(result);
+  const verified = readOnlyResultToBool(simulation.result?.retval);
 
-  return {
-    verified,
-    sourcePublicKey: resolvedPublicKey,
-  };
+  return { verified, sourcePublicKey };
 }

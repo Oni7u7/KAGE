@@ -218,6 +218,33 @@ textarea:focus {
   color: #b9d0ff;
 }
 
+.btn-freighter {
+  background: linear-gradient(130deg, #7b5ea7, #4a90d9);
+  color: #fff;
+}
+
+.freighter-connected {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid rgba(52, 211, 153, 0.35);
+  border-radius: 10px;
+  background: rgba(52, 211, 153, 0.07);
+  font-size: 0.9em;
+  line-height: 1.4;
+}
+
+.dot-green {
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #34d399;
+  margin-top: 4px;
+  box-shadow: 0 0 6px #34d399;
+}
+
 .result-box {
   margin-top: 1rem;
   border: 1px solid rgba(126, 156, 255, 0.2);
@@ -244,6 +271,17 @@ textarea:focus {
 .bad {
   color: var(--red);
   font-weight: 700;
+}
+
+.tx-link a {
+  color: var(--cyan);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.9em;
+}
+
+.tx-link a:hover {
+  text-decoration: underline;
 }
 
 @media (min-width: 960px) {

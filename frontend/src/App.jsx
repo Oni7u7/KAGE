@@ -1,124 +1,198 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import * as snarkjs from "snarkjs";
-import { cleanHex, proofToHex, publicSignalsToHex } from "./lib/snarkHex";
+import {
+  isConnected,
+  isAllowed,
+  requestAccess,
+  getAddress,
+} from "@stellar/freighter-api";
+import { proofToHex, publicSignalsToHex } from "./lib/snarkHex";
 import { verifyProofOnSoroban } from "./lib/stellarVerify";
+import { transferUSDC } from "./lib/usdcTransfer";
 
-const envSecret = import.meta.env.VITE_SOURCE_SECRET || "";
+const CONTRACT_ID =
+  import.meta.env.VITE_CONTRACT_ID ||
+  "CBNGVDN6DH4LRK6LDIKSR5EP7BDEWK4SDD7YZSMIZNW5NIHQT4SRXSR6";
+const RPC_URL =
+  import.meta.env.VITE_RPC_URL || "https://soroban-testnet.stellar.org";
+const NETWORK_PASSPHRASE =
+  import.meta.env.VITE_NETWORK_PASSPHRASE || "Test SDF Network ; September 2015";
 
-const DEFAULTS = {
-  contractId:
-    import.meta.env.VITE_CONTRACT_ID ||
-    "CBAK5KBSEQTYSCT2ONHEZOUXY7MFNB4JZ36WG7C23QALEKEFNWLXHEPL",
-  sourceSecret: envSecret.includes("REPLACE_WITH") ? "" : envSecret,
-  sourcePublicKey: import.meta.env.VITE_SOURCE_PUBLIC || "",
-  rpcUrl: import.meta.env.VITE_RPC_URL || "https://soroban-testnet.stellar.org",
-  networkPassphrase:
-    import.meta.env.VITE_NETWORK_PASSPHRASE || "Test SDF Network ; September 2015",
-};
+const AMOUNT_LIMIT = "10000";
+const BLACKLISTED_WALLET = "999888777666";
 
-function multiplyOrZero(a, b) {
-  try {
-    return (BigInt(a) * BigInt(b)).toString();
-  } catch {
-    return "0";
+function hashWalletAddress(addr) {
+  let h = BigInt(0);
+  for (let i = 0; i < addr.length; i++) {
+    h = (h * BigInt(31) + BigInt(addr.charCodeAt(i))) % (BigInt(2) ** BigInt(63));
   }
+  return h.toString();
 }
 
 export default function App() {
-  const [a, setA] = useState("3");
-  const [b, setB] = useState("11");
+  // ── ZK-Remit inputs ────────────────────────────────────────────────────────
+  const [amount, setAmount]       = useState("500");
+  const [recipient, setRecipient] = useState("");
+  const [kycHash, setKycHash]     = useState("1234567890");
 
-  const [proofHex, setProofHex] = useState("");
-  const [publicHex, setPublicHex] = useState("");
+  // ── Proof output ───────────────────────────────────────────────────────────
+  const [proofHex, setProofHex]           = useState("");
+  const [publicHex, setPublicHex]         = useState("");
   const [publicSignals, setPublicSignals] = useState([]);
 
-  const [contractId, setContractId] = useState(DEFAULTS.contractId);
-  const [sourceSecret, setSourceSecret] = useState(DEFAULTS.sourceSecret);
-  const [sourcePublicKeyInput, setSourcePublicKeyInput] = useState(DEFAULTS.sourcePublicKey);
-  const [rpcUrl, setRpcUrl] = useState(DEFAULTS.rpcUrl);
-  const [networkPassphrase, setNetworkPassphrase] = useState(DEFAULTS.networkPassphrase);
+  // ── Freighter wallet ───────────────────────────────────────────────────────
+  const [freighterKey, setFreighterKey]   = useState("");
+  const [busyConnect, setBusyConnect]     = useState(false);
 
+  // ── UI state ───────────────────────────────────────────────────────────────
   const [busyGenerate, setBusyGenerate] = useState(false);
-  const [busyVerify, setBusyVerify] = useState(false);
-  const [message, setMessage] = useState("Generate a Groth16 proof, then verify it against Soroban testnet.");
+  const [busyVerify, setBusyVerify]     = useState(false);
+  const [message, setMessage]           = useState(
+    "Conecta Freighter y genera un ZK proof para verificar en Soroban testnet."
+  );
   const [verifyResult, setVerifyResult] = useState(null);
-  const [sourcePublicKey, setSourcePublicKey] = useState("");
+  const [txHash, setTxHash]             = useState("");
 
-  const predictedOutput = useMemo(() => multiplyOrZero(a, b), [a, b]);
+  // ── Connect Freighter ──────────────────────────────────────────────────────
+  async function onConnectFreighter() {
+    setBusyConnect(true);
+    try {
+      const installed = await isConnected();
+      if (!installed?.isConnected) {
+        setMessage("Freighter no está instalado. Instálalo desde freighter.app y recarga.");
+        return;
+      }
 
+      const allowed = await isAllowed();
+      if (!allowed?.isAllowed) {
+        // requestAccess also returns { address, error? } in v6
+        const accessResult = await requestAccess();
+        if (accessResult?.error) {
+          setMessage(`Freighter: acceso denegado. ${accessResult.error}`);
+          return;
+        }
+        // requestAccess already gives us the address on success
+        if (accessResult?.address) {
+          setFreighterKey(accessResult.address);
+          setMessage(`Freighter conectado: ${accessResult.address.slice(0, 10)}...`);
+          return;
+        }
+      }
+
+      // Already allowed — just fetch the address
+      const addrResult = await getAddress();
+      if (addrResult?.error) {
+        setMessage(`Freighter: error obteniendo dirección. ${addrResult.error}`);
+        return;
+      }
+      if (!addrResult?.address) {
+        setMessage("Freighter: no se obtuvo ninguna dirección. ¿Está desbloqueado?");
+        return;
+      }
+
+      setFreighterKey(addrResult.address);
+      setMessage(`Freighter conectado: ${addrResult.address.slice(0, 10)}...`);
+    } catch (err) {
+      setMessage(`Error conectando Freighter: ${err.message || String(err)}`);
+    } finally {
+      setBusyConnect(false);
+    }
+  }
+
+  // ── Proof generation ───────────────────────────────────────────────────────
   async function onGenerateProof(e) {
     e.preventDefault();
     setBusyGenerate(true);
     setVerifyResult(null);
+    setProofHex("");
+    setPublicHex("");
+
     try {
-      const input = { a: a.trim(), b: b.trim() };
+      const walletHash = hashWalletAddress(recipient.trim());
+
+      const input = {
+        kyc_hash:     kycHash.trim(),
+        amount:       amount.trim(),
+        wallet_hash:  walletHash,
+        amount_limit: AMOUNT_LIMIT,
+        blacklisted:  BLACKLISTED_WALLET,
+      };
+
+      setMessage("Generando ZK proof en el browser (snarkjs Groth16)...");
+
       const { proof, publicSignals: pub } = await snarkjs.groth16.fullProve(
         input,
-        "/circuits/multiplier2.wasm",
-        "/proving/multiplier2_final.zkey"
+        "/circuits/zkremit.wasm",
+        "/proving/zkremit_final.zkey"
       );
 
-      const nextProofHex = proofToHex(proof);
+      const nextProofHex  = proofToHex(proof);
       const nextPublicHex = publicSignalsToHex(pub);
 
       setProofHex(nextProofHex);
       setPublicHex(nextPublicHex);
       setPublicSignals(pub);
-      setMessage(`Proof generated for a=${input.a}, b=${input.b}. Public output c=${pub[0]}.`);
+      setMessage(
+        `Proof generado. Monto ${amount} <= ${AMOUNT_LIMIT} ✓ | ` +
+        `KYC commitment: ${pub[0].slice(0, 12)}... | ` +
+        `Wallet no bloqueada ✓`
+      );
     } catch (err) {
-      setMessage(`Proof generation failed: ${err.message || String(err)}`);
+      setMessage(`Error al generar proof: ${err.message || String(err)}`);
     } finally {
       setBusyGenerate(false);
     }
   }
 
-  function onCorruptProof() {
-    if (!proofHex) return;
-    const c = cleanHex(proofHex);
-    if (c.length < 2) return;
-    const head = c.slice(0, c.length - 2);
-    const tail = c.slice(c.length - 2);
-    const flipped = (parseInt(tail, 16) ^ 0x01).toString(16).padStart(2, "0");
-    setProofHex(head + flipped);
-    setMessage("Proof hex mutated. Verification should now fail or revert.");
-  }
-
-  function onCorruptPublicSignal() {
-    if (!publicHex) return;
-    const c = cleanHex(publicHex);
-    if (c.length < 2) return;
-    const head = c.slice(0, c.length - 2);
-    const tail = c.slice(c.length - 2);
-    const bumped = (parseInt(tail, 16) + 1).toString(16).slice(-2).padStart(2, "0");
-    setPublicHex(head + bumped);
-    setMessage("Public hex mutated. Verification should now return false.");
-  }
-
-  async function onVerifyProof(e) {
+  // ── Verify on-chain → transfer USDC if approved ───────────────────────────
+  async function onVerifyAndSend(e) {
     e.preventDefault();
+    if (!freighterKey) {
+      setMessage("Conecta Freighter primero (Panel 2).");
+      return;
+    }
+    if (!recipient.trim()) {
+      setMessage("Ingresa la dirección del destinatario en el Panel 1.");
+      return;
+    }
+
     setBusyVerify(true);
     setVerifyResult(null);
+    setTxHash("");
 
     try {
-      const result = await verifyProofOnSoroban({
-        rpcUrl,
-        networkPassphrase,
-        contractId,
-        sourceSecret,
-        sourcePublicKey: sourcePublicKeyInput,
+      // ── Step 1: verify ZK proof on Soroban (simulation, no signing needed) ──
+      setMessage("Verificando ZK proof on-chain...");
+      const { verified } = await verifyProofOnSoroban({
+        rpcUrl: RPC_URL,
+        networkPassphrase: NETWORK_PASSPHRASE,
+        contractId: CONTRACT_ID,
+        sourcePublicKey: freighterKey,
         proofHex,
         publicHex,
       });
 
-      setSourcePublicKey(result.sourcePublicKey);
-      setVerifyResult(result.verified);
-      setMessage(
-        result.verified
-          ? "Contract verification returned true."
-          : "Contract verification returned false (expected after edits)."
-      );
+      setVerifyResult(verified);
+
+      if (!verified) {
+        setMessage("Verificación RECHAZADA. El proof no es válido — no se realizará ninguna transferencia.");
+        return;
+      }
+
+      // ── Step 2: transfer USDC (Freighter will show signing popup) ────────────
+      setMessage("Proof verificado ✓ — Aprueba la transferencia en Freighter...");
+      const { hash } = await transferUSDC({
+        rpcUrl: RPC_URL,
+        networkPassphrase: NETWORK_PASSPHRASE,
+        fromPublicKey: freighterKey,
+        toPublicKey: recipient.trim(),
+        amount,
+      });
+
+      setTxHash(hash);
+      setMessage(`¡Transferencia enviada! ${amount} USDC → ${recipient.trim().slice(0, 10)}...`);
     } catch (err) {
-      setMessage(`Verification failed: ${err.message || String(err)}`);
+      setMessage(`Error: ${err.message || String(err)}`);
     } finally {
       setBusyVerify(false);
     }
@@ -131,127 +205,152 @@ export default function App() {
 
       <main className="container">
         <header className="hero">
-          <p className="eyebrow">CIRCOM + SNARKJS + GROTH16 + STELLAR</p>
-          <h1>Circom x Stellar</h1>
+          <p className="eyebrow">ZK-REMIT · CIRCOM + GROTH16 + STELLAR SOROBAN</p>
+          <h1>ZK-Remit</h1>
           <p className="subtitle">
-            Generate a zero-knowledge proof in-browser and verify against a live verifier contract on Stellar.
+            Remesas privadas: prueba KYC + cumplimiento AML on-chain sin revelar tu identidad ni el monto exacto.
           </p>
         </header>
 
         <section className="panel-grid">
+
+          {/* ── Panel 1: Generar Proof ──────────────────────────────────── */}
           <article className="panel">
-            <h2>1. Generate Proof</h2>
+            <h2>1. Enviar con privacidad ZK</h2>
             <form onSubmit={onGenerateProof} className="stack">
-              <div className="field-row">
-                <label>
-                  Private input a
-                  <input value={a} onChange={(e) => setA(e.target.value)} inputMode="numeric" required />
-                </label>
-                <label>
-                  Private input b
-                  <input value={b} onChange={(e) => setB(e.target.value)} inputMode="numeric" required />
-                </label>
+
+              <label>
+                Monto a enviar
+                <input
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  inputMode="numeric"
+                  placeholder="500"
+                  required
+                />
+              </label>
+              <div className="pill">
+                Límite AML: {AMOUNT_LIMIT} — el proof verifica que tu monto no lo supera
               </div>
 
-              <div className="pill">Predicted public output c = {predictedOutput}</div>
+              <label>
+                Dirección destinatario (Stellar G...)
+                <input
+                  value={recipient}
+                  onChange={(e) => setRecipient(e.target.value)}
+                  placeholder="GABC...XYZ"
+                  required
+                />
+              </label>
+
+              <label>
+                KYC Hash (simulado — número que representa tu documento)
+                <input
+                  value={kycHash}
+                  onChange={(e) => setKycHash(e.target.value)}
+                  inputMode="numeric"
+                  placeholder="1234567890"
+                  required
+                />
+              </label>
+              <div className="pill muted">
+                MOCK: en producción, el KYC hash lo genera el proveedor KYC de forma privada
+              </div>
 
               <button type="submit" className="btn btn-primary" disabled={busyGenerate}>
-                {busyGenerate ? "Generating..." : "Generate Proof"}
+                {busyGenerate ? "Generando proof ZK..." : "Generar ZK Proof"}
               </button>
             </form>
 
-            <div className="stack">
+            {/* Proof hex (editable para demo de corrupción) */}
+            <div className="stack" style={{ marginTop: "1rem" }}>
               <label>
                 Proof hex (editable)
                 <textarea
                   value={proofHex}
                   onChange={(e) => setProofHex(e.target.value)}
-                  placeholder="Generated proof hex appears here"
-                  rows={6}
+                  placeholder="El proof generado aparece aquí"
+                  rows={5}
                 />
               </label>
-
               <label>
                 Public signals hex (editable)
                 <textarea
                   value={publicHex}
                   onChange={(e) => setPublicHex(e.target.value)}
-                  placeholder="Generated public hex appears here"
-                  rows={4}
+                  placeholder="Los public signals aparecen aquí"
+                  rows={3}
                 />
               </label>
-
-              <div className="row-actions">
-                <button type="button" className="btn btn-ghost" onClick={onCorruptProof}>
-                  Flip Last Proof Byte
-                </button>
-                <button type="button" className="btn btn-ghost" onClick={onCorruptPublicSignal}>
-                  Bump Public Signal
-                </button>
-                <span className="muted">Current public signal: {publicSignals[0] ?? "n/a"}</span>
-              </div>
+              {publicSignals.length > 0 && (
+                <div className="muted" style={{ fontSize: "0.8em" }}>
+                  <div>kyc_commitment: {publicSignals[0]?.slice(0, 20)}...</div>
+                  <div>amount_limit: {publicSignals[1]}</div>
+                  <div>blacklisted (mock): {publicSignals[2]}</div>
+                </div>
+              )}
             </div>
           </article>
 
+          {/* ── Panel 2: Conectar Freighter + Verificar ─────────────────── */}
           <article className="panel">
-            <h2>2. Verify On Soroban Testnet</h2>
-            <form onSubmit={onVerifyProof} className="stack">
-              <label>
-                Contract ID
-                <input value={contractId} onChange={(e) => setContractId(e.target.value)} required />
-              </label>
+            <h2>2. Verificar en Soroban Testnet</h2>
 
-              <label>
-                Source secret key (testnet)
-                <input
-                  type="password"
-                  value={sourceSecret}
-                  onChange={(e) => setSourceSecret(e.target.value)}
-                />
-              </label>
+            {/* Freighter connection */}
+            <div className="stack" style={{ marginBottom: "1.5rem" }}>
+              {freighterKey ? (
+                <div className="freighter-connected">
+                  <span className="dot-green" />
+                  <span>
+                    Freighter conectado<br />
+                    <span className="muted" style={{ fontSize: "0.8em", wordBreak: "break-all" }}>
+                      {freighterKey}
+                    </span>
+                  </span>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn-freighter"
+                  onClick={onConnectFreighter}
+                  disabled={busyConnect}
+                >
+                  {busyConnect ? "Conectando..." : "Conectar Freighter"}
+                </button>
+              )}
+            </div>
 
-              <label>
-                Source public key (fallback for read-only verify)
-                <input
-                  value={sourcePublicKeyInput}
-                  onChange={(e) => setSourcePublicKeyInput(e.target.value)}
-                />
-              </label>
-
-              <div className="field-row">
-                <label>
-                  RPC URL
-                  <input value={rpcUrl} onChange={(e) => setRpcUrl(e.target.value)} required />
-                </label>
-                <label>
-                  Network passphrase
-                  <input
-                    value={networkPassphrase}
-                    onChange={(e) => setNetworkPassphrase(e.target.value)}
-                    required
-                  />
-                </label>
-              </div>
-
+            <form onSubmit={onVerifyAndSend} className="stack">
               <button
                 type="submit"
                 className="btn btn-primary"
-                disabled={busyVerify || !proofHex || !publicHex}
+                disabled={busyVerify || !proofHex || !publicHex || !freighterKey}
               >
-                {busyVerify ? "Verifying..." : "Verify Proof"}
+                {busyVerify ? "Procesando..." : "Verificar y Enviar USDC"}
               </button>
             </form>
 
             <div className="result-box">
               <p>{message}</p>
-              {sourcePublicKey && <p className="muted">Source account: {sourcePublicKey}</p>}
               {verifyResult !== null && (
                 <p className={verifyResult ? "ok" : "bad"}>
                   verifier.verify(...) =&gt; {String(verifyResult)}
                 </p>
               )}
+              {txHash && (
+                <p className="tx-link">
+                  <a
+                    href={`https://stellar.expert/explorer/testnet/tx/${txHash}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Ver transacción en stellar.expert ↗
+                  </a>
+                </p>
+              )}
             </div>
           </article>
+
         </section>
       </main>
     </div>

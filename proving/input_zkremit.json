@@ -1,0 +1,7 @@
+{
+  "kyc_hash":     "1234567890",
+  "amount":       "500",
+  "wallet_hash":  "111222333444",
+  "amount_limit": "10000",
+  "blacklisted":  "999888777666"
+}
