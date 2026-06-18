@@ -126,13 +126,12 @@ export default function Landing({ onLaunch }) {
           <img src="/kage-logo.png" alt="Kage" className="hero-logo-big" />
           <p className="hero-eyebrow">KAGE · ZK REMITTANCES · STELLAR SOROBAN</p>
           <h1 className="hero-headline">
-            Remesas privadas con<br />
-            <span className="hero-accent">prueba ZK on-chain</span>
+            Manda dinero<br />
+            <span className="hero-accent">sin mostrar tu ID</span>
           </h1>
           <p className="hero-sub">
-            Verifica KYC y cumplimiento AML directamente en Stellar Soroban
-            sin revelar tu identidad, tu wallet, ni el monto exacto.
-            Privacidad real. Compliance real.
+            Western Union sabe quién eres, cuánto mandas y a quién.
+            Kage no. Y aun así puede probarle al banco que eres elegible.
           </p>
           <div className="hero-actions">
             <button className="btn-hero-primary" onClick={onLaunch}>
@@ -155,8 +154,8 @@ export default function Landing({ onLaunch }) {
       <div className="stats-band">
         <div className="stats-band-inner">
           <div className="stat-cell">
-            <span className="stat-num cyan">3</span>
-            <span className="stat-desc">verificaciones en 1 proof</span>
+            <span className="stat-num cyan">$150B+</span>
+            <span className="stat-desc">remesas a LATAM al año</span>
           </div>
           <div className="stat-sep" />
           <div className="stat-cell">
@@ -166,15 +165,50 @@ export default function Landing({ onLaunch }) {
           <div className="stat-sep" />
           <div className="stat-cell">
             <span className="stat-num blue">~3s</span>
-            <span className="stat-desc">generación del proof ZK</span>
+            <span className="stat-desc">para generar tu proof privado</span>
           </div>
           <div className="stat-sep" />
           <div className="stat-cell">
-            <span className="stat-num purple">128B</span>
-            <span className="stat-desc">tamaño del proof Groth16</span>
+            <span className="stat-num purple">100%</span>
+            <span className="stat-desc">verificable por cualquiera</span>
           </div>
         </div>
       </div>
+
+      {/* ── Why Kage ────────────────────────────────────────────────────── */}
+      <section className="land-section land-why">
+        <div className="section-inner">
+          <p className="section-eyebrow eyebrow-cyan">El problema</p>
+          <h2 className="section-title">¿Por qué existe Kage?</h2>
+          <p className="section-sub">
+            Mandar dinero al extranjero siempre implica exponer datos.
+            Hasta ahora.
+          </p>
+          <div className="why-grid">
+            <div className="why-card why-bad">
+              <div className="why-icon-row">
+                <span className="why-x">✕</span>
+                <h4>Con Western Union</h4>
+              </div>
+              <p>Te piden pasaporte. Guardan tus datos. Saben exactamente cuánto mandas y a quién.</p>
+            </div>
+            <div className="why-card why-bad">
+              <div className="why-icon-row">
+                <span className="why-x">✕</span>
+                <h4>Con una transferencia normal en blockchain</h4>
+              </div>
+              <p>Tu wallet, el monto y el destinatario son públicos para siempre. Cualquiera puede verlos.</p>
+            </div>
+            <div className="why-card why-good">
+              <div className="why-icon-row">
+                <span className="why-check-big">✓</span>
+                <h4>Con Kage</h4>
+              </div>
+              <p>Pruebas que tienes permiso de enviar. Sin mostrar quién eres. Todo verificable. Nada expuesto.</p>
+            </div>
+          </div>
+        </div>
+      </section>
 
       {/* ── How it works ────────────────────────────────────────────────── */}
       <section className="land-section land-how" id="como-funciona">
@@ -182,47 +216,46 @@ export default function Landing({ onLaunch }) {
           <p className="section-eyebrow eyebrow-blue">Flujo del protocolo</p>
           <h2 className="section-title">Cómo funciona Kage</h2>
           <p className="section-sub">
-            Un flujo de 4 pasos genera, verifica y ejecuta la remesa sin exponer
-            ningún dato sensible en ningún momento.
+            4 pasos. Sin servidores que vean tus datos. Sin bancos que guarden tu historial.
           </p>
           <div className="how-grid">
             <div className="how-card">
               <div className="how-num blue-border">1</div>
               <div className="how-icon how-icon-blue"><IconKeyboard /></div>
-              <h3>Datos privados</h3>
+              <h3>Tú decides qué compartir</h3>
               <p>
-                Ingresa el monto, la dirección destino y tu KYC hash.
-                Todo permanece en tu dispositivo — ningún servidor los ve.
+                Ingresas el monto y a quién enviarle.
+                Eso es todo lo que necesitas hacer.
               </p>
               <div className="how-tag blue-tag">Local · Privado</div>
             </div>
             <div className="how-card">
               <div className="how-num cyan-border">2</div>
               <div className="how-icon how-icon-cyan"><IconCpu /></div>
-              <h3>Generación ZK Proof</h3>
+              <h3>Tu teléfono hace la magia</h3>
               <p>
-                El circuito Circom calcula el ZK-SNARK Groth16 en tu browser
-                con snarkjs. El proof demuestra 3 hechos sin revelarlos.
+                Genera una prueba matemática que dice "esta persona cumple los requisitos"
+                sin revelar quién es esa persona.
               </p>
-              <div className="how-tag cyan-tag">Browser · Groth16</div>
+              <div className="how-tag cyan-tag">Browser · Sin servidores</div>
             </div>
             <div className="how-card">
               <div className="how-num green-border">3</div>
               <div className="how-icon how-icon-green"><IconShieldCheck /></div>
-              <h3>Verificación on-chain</h3>
+              <h3>Stellar lo verifica</h3>
               <p>
-                El smart contract Soroban verifica el proof criptográficamente.
-                KYC · AML · Blacklist — sin ver los datos reales.
+                La blockchain confirma la prueba.
+                Nadie tuvo que ver tu ID para hacerlo.
               </p>
               <div className="how-tag green-tag">Stellar · Soroban</div>
             </div>
             <div className="how-card">
               <div className="how-num purple-border">4</div>
               <div className="how-icon how-icon-purple"><IconSend /></div>
-              <h3>Transferencia USDC</h3>
+              <h3>El dinero llega</h3>
               <p>
-                Con el proof válido, Freighter firma la transacción y el USDC
-                se transfiere en Stellar testnet de forma autónoma.
+                El USDC se transfiere. La transacción queda
+                registrada públicamente. Tu identidad no.
               </p>
               <div className="how-tag purple-tag">USDC · Freighter</div>
             </div>
@@ -394,6 +427,11 @@ export default function Landing({ onLaunch }) {
                   </tr>
                 </thead>
                 <tbody>
+                  <tr>
+                    <td><strong>¿Saben quién eres?</strong></td>
+                    <td className="td-bad">Sí (siempre)</td>
+                    <td className="td-good">No (nunca)</td>
+                  </tr>
                   <tr>
                     <td>Identidad on-chain</td>
                     <td className="td-bad">Expuesta</td>

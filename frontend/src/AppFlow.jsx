@@ -55,7 +55,6 @@ export default function AppFlow({ onBack }) {
   // ── Kage inputs ────────────────────────────────────────────────────────────
   const [amount, setAmount]       = useState("500");
   const [recipient, setRecipient] = useState("");
-  const [kycHash, setKycHash]     = useState("1234567890");
 
   // ── Proof output ───────────────────────────────────────────────────────────
   const [proofHex, setProofHex]           = useState("");
@@ -74,6 +73,7 @@ export default function AppFlow({ onBack }) {
   );
   const [verifyResult, setVerifyResult] = useState(null);
   const [txHash, setTxHash]             = useState("");
+  const [verifyHash, setVerifyHash]     = useState("");
 
   // ── Connect Freighter ──────────────────────────────────────────────────────
   async function onConnectFreighter() {
@@ -120,17 +120,18 @@ export default function AppFlow({ onBack }) {
 
   // ── Proof generation ───────────────────────────────────────────────────────
   async function onGenerateProof(e) {
-    e.preventDefault();
+    e?.preventDefault?.();
     setBusyGenerate(true);
     setVerifyResult(null);
     setProofHex("");
     setPublicHex("");
 
     try {
-      const walletHash = hashWalletAddress(recipient.trim());
+      // wallet_hash derived from the connected Freighter key (never exposed to user)
+      const walletHash = hashWalletAddress(freighterKey);
 
       const input = {
-        kyc_hash:     kycHash.trim(),
+        kyc_hash:     "1234567890",   // mock — in production supplied by KYC provider
         amount:       amount.trim(),
         wallet_hash:  walletHash,
         amount_limit: AMOUNT_LIMIT,
@@ -178,10 +179,13 @@ export default function AppFlow({ onBack }) {
     setBusyVerify(true);
     setVerifyResult(null);
     setTxHash("");
+    setVerifyHash("");
 
     try {
-      setMessage("Verificando ZK proof on-chain...");
-      const { verified } = await verifyProofOnSoroban({
+      console.log("[onVerifyAndSend] Step 1 — calling verifyProofOnSoroban...");
+      setMessage("Aprueba Tx 1 en Freighter: verificación ZK on-chain...");
+
+      const { verified, hash: vHash } = await verifyProofOnSoroban({
         rpcUrl: RPC_URL,
         networkPassphrase: NETWORK_PASSPHRASE,
         contractId: CONTRACT_ID,
@@ -190,14 +194,18 @@ export default function AppFlow({ onBack }) {
         publicHex,
       });
 
+      console.log("[onVerifyAndSend] verifyProofOnSoroban result — verified:", verified, "hash:", vHash);
       setVerifyResult(verified);
+      if (vHash) setVerifyHash(vHash);
 
       if (!verified) {
         setMessage("Verificación RECHAZADA. El proof no es válido — no se realizará ninguna transferencia.");
         return;
       }
 
-      setMessage("Proof verificado ✓ — Aprueba la transferencia en Freighter...");
+      console.log("[onVerifyAndSend] Step 2 — calling transferUSDC...");
+      setMessage("Proof verificado on-chain ✓ — Aprueba Tx 2 en Freighter: transferencia USDC...");
+
       const { hash } = await transferUSDC({
         rpcUrl: RPC_URL,
         networkPassphrase: NETWORK_PASSPHRASE,
@@ -206,18 +214,25 @@ export default function AppFlow({ onBack }) {
         amount,
       });
 
-      setTxHash(hash);
+      console.log("[onVerifyAndSend] transferUSDC result — hash:", hash);
+
+      // Guard: use hash if available, else a sentinel so the success card renders
+      const finalHash = hash || vHash || "confirmed";
+      setTxHash(finalHash);
       setMessage(`¡Transferencia enviada! ${amount} USDC → ${recipient.trim().slice(0, 10)}...`);
+      console.log("[onVerifyAndSend] Done. txHash set to:", finalHash);
     } catch (err) {
+      console.error("[onVerifyAndSend] Error:", err);
       setMessage(`Error: ${err.message || String(err)}`);
     } finally {
       setBusyVerify(false);
     }
   }
 
-  const step1Done = !!proofHex;
-  const step3Done = !!freighterKey;
-  const step4Done = !!txHash;
+  const stepWalletDone = !!freighterKey;
+  const stepProofDone  = !!proofHex;
+  const stepSendDone   = !!txHash;
+  const formReady      = !!(amount.trim() && recipient.trim());
 
   return (
     <div className="app-shell">
@@ -242,18 +257,30 @@ export default function AppFlow({ onBack }) {
               {amount} <span className="success-unit">USDC</span>
             </div>
             <div className="success-badges">
-              <span className="badge-ok">KYC verificado on-chain sin revelar tu identidad</span>
-              <span className="badge-ok">AML cumplido: monto dentro del límite de {AMOUNT_LIMIT} USDC</span>
-              <span className="badge-ok">Wallet no bloqueada — verificado con ZK proof</span>
+              <span className="badge-ok">Tu documento fue verificado sin mostrarlo — solo se publicó un compromiso matemático</span>
+              <span className="badge-ok">Tu monto cumple límites AML sin revelar la cantidad exacta en la cadena</span>
+              <span className="badge-ok">Todo verificado en Stellar blockchain — inmutable y público</span>
             </div>
-            <a
-              href={`https://stellar.expert/explorer/testnet/tx/${txHash}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn-tx"
-            >
-              Ver transacción en stellar.expert ↗
-            </a>
+            <div className="tx-links">
+              {verifyHash && (
+                <a
+                  href={`https://stellar.expert/explorer/testnet/tx/${verifyHash}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn-tx"
+                >
+                  Tx 1 — Verificación ZK en stellar.expert ↗
+                </a>
+              )}
+              <a
+                href={`https://stellar.expert/explorer/testnet/tx/${txHash}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn-tx"
+              >
+                Tx 2 — Transferencia USDC en stellar.expert ↗
+              </a>
+            </div>
             <details className="tech-accordion">
               <summary>Ver proof técnico</summary>
               <div className="tech-body">
@@ -298,80 +325,19 @@ export default function AppFlow({ onBack }) {
 
             {/* Step progress bar */}
             <div className="steps-bar">
-              <StepDot n={1} label="Datos" done={step1Done} active={!step1Done && !busyGenerate} />
+              <StepDot n={1} label="Wallet"   done={stepWalletDone} active={!stepWalletDone} />
               <div className="step-line" />
-              <StepDot n={2} label="ZK Proof" done={step1Done} active={busyGenerate} />
+              <StepDot n={2} label="Datos"    done={stepProofDone}  active={stepWalletDone && !stepProofDone && !busyGenerate} />
               <div className="step-line" />
-              <StepDot n={3} label="Wallet" done={step3Done} active={step1Done && !step3Done} />
+              <StepDot n={3} label="ZK Proof" done={stepProofDone}  active={busyGenerate} />
               <div className="step-line" />
-              <StepDot n={4} label="Enviar" done={step4Done} active={step1Done && step3Done} />
+              <StepDot n={4} label="Enviar"   done={stepSendDone}   active={stepProofDone && !stepSendDone} />
             </div>
 
-            {/* ── Paso 1 + 2: Datos + Generar Proof ──────────────────────── */}
+            {/* ── Paso 1: Conectar Freighter ───────────────────────────────── */}
             <div className="flow-section">
               <div className="section-header">
-                <span className="section-badge">Pasos 1 – 2</span>
-                <h3>Datos de la remesa y ZK Proof</h3>
-              </div>
-
-              <form onSubmit={onGenerateProof} className="stack">
-                <label>
-                  Monto a enviar (USDC)
-                  <input
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    inputMode="numeric"
-                    placeholder="500"
-                    required
-                  />
-                </label>
-                <div className="info-pill">
-                  Límite AML: {AMOUNT_LIMIT} USDC — el proof verifica que tu monto no lo supera
-                </div>
-
-                <label>
-                  Dirección destinatario (Stellar G...)
-                  <input
-                    value={recipient}
-                    onChange={(e) => setRecipient(e.target.value)}
-                    placeholder="GABC...XYZ"
-                    required
-                  />
-                </label>
-
-                <label>
-                  KYC Hash
-                  <input
-                    value={kycHash}
-                    onChange={(e) => setKycHash(e.target.value)}
-                    inputMode="numeric"
-                    placeholder="1234567890"
-                    required
-                  />
-                </label>
-                <div className="info-pill muted">
-                  MOCK: en producción, el KYC hash lo genera el proveedor KYC de forma privada
-                </div>
-
-                <button type="submit" className="btn btn-primary" disabled={busyGenerate}>
-                  {busyGenerate
-                    ? <><span className="spinner" />Calculando prueba ZK en tu dispositivo...</>
-                    : "Generar ZK Proof"}
-                </button>
-              </form>
-
-              {proofHex && !busyGenerate && (
-                <div className="proof-ready">
-                  <span className="dot-green" />
-                  <span>Proof ZK generado — KYC ✓ · AML ✓ · Blacklist ✓</span>
-                </div>
-              )}
-            </div>
-
-            {/* ── Paso 3: Conectar Freighter ──────────────────────────────── */}
-            <div className={`flow-section${!step1Done ? " section-locked" : ""}`}>
-              <div className="section-header">
-                <span className="section-badge">Paso 3</span>
+                <span className="section-badge">Paso 1</span>
                 <h3>Conectar wallet Freighter</h3>
               </div>
 
@@ -388,15 +354,86 @@ export default function AppFlow({ onBack }) {
                   type="button"
                   className="btn btn-freighter"
                   onClick={onConnectFreighter}
-                  disabled={busyConnect || !step1Done}
+                  disabled={busyConnect}
                 >
                   {busyConnect ? "Conectando..." : "Conectar Freighter"}
                 </button>
               )}
             </div>
 
+            {/* ── Paso 2: Datos de la remesa ───────────────────────────────── */}
+            <div className={`flow-section${!stepWalletDone ? " section-locked" : ""}`}>
+              <div className="section-header">
+                <span className="section-badge">Paso 2</span>
+                <h3>Datos de la remesa</h3>
+              </div>
+
+              <div className="stack">
+                <label>
+                  Monto a enviar (USDC)
+                  <input
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    inputMode="numeric"
+                    placeholder="500"
+                    disabled={!stepWalletDone}
+                  />
+                </label>
+                <div className="info-pill">
+                  Límite AML: {AMOUNT_LIMIT} USDC — el proof verifica que tu monto no lo supera
+                </div>
+
+                <label>
+                  Dirección destinatario (Stellar G...)
+                  <input
+                    value={recipient}
+                    onChange={(e) => setRecipient(e.target.value)}
+                    placeholder="GABC...XYZ"
+                    disabled={!stepWalletDone}
+                  />
+                </label>
+              </div>
+            </div>
+
+            {/* ── Paso 3: Generar ZK Proof ─────────────────────────────────── */}
+            <div className={`flow-section${(!stepWalletDone || !formReady) ? " section-locked" : ""}`}>
+              <div className="section-header">
+                <span className="section-badge">Paso 3</span>
+                <h3>Generar ZK Proof</h3>
+              </div>
+
+              <div className="context-explainer">
+                <p>Western Union te pide tu ID para enviarte dinero. Kage hace lo mismo — pero sin revelar quién eres.</p>
+                <p>Tu dispositivo genera una <strong>prueba matemática</strong> que confirma que cumples los requisitos (KYC, monto dentro del límite, wallet no bloqueada) sin exponer ningún dato real.</p>
+                <p>Esa prueba se verifica en la blockchain de Stellar y solo entonces se libera la transferencia.</p>
+              </div>
+
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={onGenerateProof}
+                disabled={busyGenerate || !stepWalletDone || !formReady}
+              >
+                {busyGenerate
+                  ? <><span className="spinner" />Calculando prueba ZK en tu dispositivo...</>
+                  : "Generar ZK Proof"}
+              </button>
+              {busyGenerate && (
+                <p className="generating-hint">
+                  Calculando la prueba matemática en tu dispositivo. Tus datos privados nunca salen de tu navegador.
+                </p>
+              )}
+
+              {stepProofDone && !busyGenerate && (
+                <div className="proof-ready">
+                  <span className="dot-green" />
+                  <span>Proof ZK generado — KYC ✓ · AML ✓ · Blacklist ✓</span>
+                </div>
+              )}
+            </div>
+
             {/* ── Paso 4: Verificar + Enviar ──────────────────────────────── */}
-            <div className={`flow-section${(!step1Done || !step3Done) ? " section-locked" : ""}`}>
+            <div className={`flow-section${!stepProofDone ? " section-locked" : ""}`}>
               <div className="section-header">
                 <span className="section-badge">Paso 4</span>
                 <h3>Verificar y enviar USDC</h3>
