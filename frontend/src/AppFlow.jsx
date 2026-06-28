@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import anime from 'animejs/lib/anime.es.js';
 
 const CheckIcon = () => (
@@ -12,6 +12,7 @@ const CheckIconLg = () => (
     <polyline points="20 6 9 17 4 12" />
   </svg>
 )
+import { initAppBg3D } from './lib/bg3d';
 import * as snarkjs from "snarkjs";
 import {
   isConnected,
@@ -53,6 +54,8 @@ function StepDot({ n, label, done, active }) {
 }
 
 export default function AppFlow({ onBack }) {
+  const canvasRef = useRef(null)
+
   // ── Kage inputs ────────────────────────────────────────────────────────────
   const [amount, setAmount]       = useState("500");
   const [recipient, setRecipient] = useState("");
@@ -344,8 +347,17 @@ export default function AppFlow({ onBack }) {
     });
   }, [freighterKey]);
 
+  /* ── 3D background shapes ────────────────────────────────────────────────── */
+  useEffect(() => {
+    if (!canvasRef.current) return;
+    const mode = txHash ? 'success' : 'form';
+    const cleanup = initAppBg3D(canvasRef.current, { mode });
+    return cleanup;
+  }, [!!txHash]);
+
   return (
     <div className="app-shell">
+      <canvas ref={canvasRef} className="bg-3d-canvas" aria-hidden="true" />
       <div className="bg-grid" />
       <div className="aurora aurora-a" />
       <div className="aurora aurora-b" />

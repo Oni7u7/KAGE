@@ -124,13 +124,13 @@ const SHAPES = {
 // Fractions match approximate positions of landing sections
 
 const SECTIONS = [
-  { at: 0.00, shape: 'cylinder',    color: '#fbbf24' }, // Hero
-  { at: 0.14, shape: 'cube',        color: '#fb7185' }, // Stats + Why
-  { at: 0.30, shape: 'torus',       color: '#2dd4bf' }, // How it works
-  { at: 0.48, shape: 'icosahedron', color: '#a855f7' }, // Privacy
-  { at: 0.64, shape: 'octahedron',  color: '#fbbf24' }, // Data
-  { at: 0.80, shape: 'torus',       color: '#fb7185' }, // Tech stack
-  { at: 0.93, shape: 'cylinder',    color: '#2dd4bf' }, // CTA
+  { at: 0.00, shape: 'cylinder',    color: '#c9a85c' }, // Hero
+  { at: 0.14, shape: 'cube',        color: '#b87a8e' }, // Stats + Why
+  { at: 0.30, shape: 'torus',       color: '#7aaa8c' }, // How it works
+  { at: 0.48, shape: 'icosahedron', color: '#7e9ab8' }, // Privacy
+  { at: 0.64, shape: 'octahedron',  color: '#c9a85c' }, // Data
+  { at: 0.80, shape: 'torus',       color: '#b87a8e' }, // Tech stack
+  { at: 0.93, shape: 'cylinder',    color: '#7aaa8c' }, // CTA
 ];
 
 // ── Draw helpers ──────────────────────────────────────────────────────────────
@@ -157,7 +157,62 @@ function drawShape(ctx, edges, cx, cy, ryA, rxA, scale, color, alpha) {
 // Smoothstep
 function smoothstep(t) { return t * t * (3 - 2 * t); }
 
-// ── Public init function ──────────────────────────────────────────────────────
+// ── App background: floating geometric shapes (no scroll) ─────────────────────
+
+export function initAppBg3D(canvasEl, { mode = 'form' } = {}) {
+  let W, H, raf, t = 0;
+  const ctx = canvasEl.getContext('2d');
+
+  function resize() {
+    W = canvasEl.width  = window.innerWidth;
+    H = canvasEl.height = window.innerHeight;
+  }
+  resize();
+
+  const onResize = () => resize();
+  window.addEventListener('resize', onResize);
+
+  // px/py = viewport fraction, rs = Y rotation speed, rx = X oscillation speed
+  // off = phase offset, sf = scale factor relative to min(W,H)
+  const formConfig = [
+    { shape: 'cylinder',   px: 0.86, py: 0.18, rs: 1.1, rx: 0.9, off: 0.0, color: '#c9a85c', alpha: 0.20, sf: 0.13 },
+    { shape: 'octahedron', px: 0.10, py: 0.75, rs: 0.8, rx: 0.7, off: 2.0, color: '#7aaa8c', alpha: 0.16, sf: 0.10 },
+    { shape: 'cube',       px: 0.90, py: 0.80, rs: 0.6, rx: 0.5, off: 4.3, color: '#7e9ab8', alpha: 0.12, sf: 0.08 },
+  ];
+
+  const successConfig = [
+    { shape: 'icosahedron', px: 0.10, py: 0.16, rs: 1.0, rx: 0.8, off: 0.0, color: '#7aaa8c', alpha: 0.24, sf: 0.14 },
+    { shape: 'torus',       px: 0.90, py: 0.18, rs: 0.7, rx: 1.1, off: 1.5, color: '#c9a85c', alpha: 0.22, sf: 0.13 },
+    { shape: 'cylinder',    px: 0.84, py: 0.82, rs: 0.9, rx: 0.6, off: 3.1, color: '#7e9ab8', alpha: 0.18, sf: 0.11 },
+    { shape: 'octahedron',  px: 0.12, py: 0.84, rs: 1.2, rx: 0.9, off: 5.0, color: '#b87a8e', alpha: 0.15, sf: 0.09 },
+  ];
+
+  const configs = mode === 'success' ? successConfig : formConfig;
+
+  function render() {
+    ctx.clearRect(0, 0, W, H);
+    t += 0.007;
+
+    for (const cfg of configs) {
+      const cx    = W * cfg.px;
+      const cy    = H * cfg.py;
+      const scale = Math.min(W, H) * cfg.sf;
+      const ryA   = t * cfg.rs + cfg.off;
+      const rxA   = Math.sin(t * cfg.rx * 0.38 + cfg.off) * 0.32;
+      drawShape(ctx, SHAPES[cfg.shape], cx, cy, ryA, rxA, scale, cfg.color, cfg.alpha);
+    }
+
+    raf = requestAnimationFrame(render);
+  }
+  render();
+
+  return () => {
+    cancelAnimationFrame(raf);
+    window.removeEventListener('resize', onResize);
+  };
+}
+
+// ── Landing page init function ────────────────────────────────────────────────
 
 export function initBg3D(canvasEl) {
   let W, H, raf, t = 0, scrollPct = 0;
