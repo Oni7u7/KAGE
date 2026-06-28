@@ -908,7 +908,7 @@ export default function Landing({ onLaunch }) {
           </div>
         </div>
         <div className="footer-bottom">
-          <span>© 2025 Kage · Remesas privadas con ZK-proofs</span>
+          <span>© 2026 Kage · Remesas privadas con ZK-proofs</span>
           <button className="footer-cta-btn" onClick={onLaunch}>
             Abrir App →
           </button>
