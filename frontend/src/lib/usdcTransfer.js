@@ -97,3 +97,47 @@ export async function transferUSDC({ rpcUrl, networkPassphrase, fromPublicKey, t
 
   return { hash: sendResult.hash };
 }
+
+/**
+ * Reads the USDC balance of an address via Soroban simulation (no signing needed).
+ * Returns the balance as a human-readable string (e.g. "500.00") or null on error.
+ *
+ * @param {object} opts
+ * @param {string} opts.rpcUrl
+ * @param {string} opts.networkPassphrase
+ * @param {string} opts.address  - Stellar G... address to check
+ * @returns {Promise<string|null>}
+ */
+export async function getUSDCBalance({ rpcUrl, networkPassphrase, address }) {
+  const rpc = StellarSdk.SorobanRpc ?? StellarSdk.rpc;
+  if (!rpc?.Server) return null;
+
+  const server = new rpc.Server(rpcUrl, { allowHttp: rpcUrl.startsWith("http://") });
+
+  try {
+    const account = await server.getAccount(address);
+
+    const op = StellarSdk.Operation.invokeContractFunction({
+      contract: USDC_CONTRACT_ID,
+      function: "balance",
+      args: [StellarSdk.nativeToScVal(address, { type: "address" })],
+    });
+
+    const tx = new StellarSdk.TransactionBuilder(account, {
+      fee: StellarSdk.BASE_FEE,
+      networkPassphrase,
+    })
+      .addOperation(op)
+      .setTimeout(30)
+      .build();
+
+    const sim = await server.simulateTransaction(tx);
+    if (sim.result?.retval) {
+      const raw = StellarSdk.scValToNative(sim.result.retval);
+      return (Number(raw) / 10 ** USDC_DECIMALS).toFixed(2);
+    }
+    return "0.00";
+  } catch {
+    return null;
+  }
+}

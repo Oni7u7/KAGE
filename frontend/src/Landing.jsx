@@ -1,3 +1,7 @@
+import { useEffect, useRef, useState } from 'react'
+import anime from 'animejs/lib/anime.es.js'
+import { initBg3D } from './lib/bg3d'
+
 /* ── SVG icon components ──────────────────────────────────────────────────── */
 
 const IconKeyboard = () => (
@@ -98,8 +102,318 @@ const IconWallet = () => (
 /* ── Landing page ─────────────────────────────────────────────────────────── */
 
 export default function Landing({ onLaunch }) {
+  const canvasRef = useRef(null)
+  const [scrollPct, setScrollPct] = useState(0)
+
+  /* ── 3D background canvas ──────────────────────────────────────────────── */
+  useEffect(() => {
+    if (!canvasRef.current) return
+    const cleanup = initBg3D(canvasRef.current)
+    return cleanup
+  }, [])
+
+  /* ── Scroll progress bar ───────────────────────────────────────────────── */
+  useEffect(() => {
+    const onScroll = () => {
+      const max = document.documentElement.scrollHeight - window.innerHeight
+      setScrollPct(max > 0 ? Math.min(100, (window.scrollY / max) * 100) : 0)
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+
+  /* ── Hero entrance ─────────────────────────────────────────────────────── */
+  useEffect(() => {
+    anime.timeline({ easing: 'easeOutExpo' })
+      .add({ targets: '.hero-logo-big',    opacity: [0, 1], scale: [0.8, 1],    duration: 900 })
+      .add({ targets: '.hero-eyebrow',     opacity: [0, 1], translateY: [24, 0], duration: 600 }, '-=500')
+      .add({ targets: '.hero-headline',    opacity: [0, 1], translateY: [36, 0], duration: 750 }, '-=350')
+      .add({ targets: '.hero-sub',         opacity: [0, 1], translateY: [24, 0], duration: 650 }, '-=350')
+      .add({ targets: '.hero-actions',     opacity: [0, 1], translateY: [20, 0], duration: 550 }, '-=250')
+      .add({
+        targets: '.hero-chips .chip',
+        opacity: [0, 1],
+        translateY: [16, 0],
+        delay: anime.stagger(90),
+        duration: 500,
+      }, '-=250')
+  }, [])
+
+  /* ── Aurora floating ───────────────────────────────────────────────────── */
+  useEffect(() => {
+    anime({
+      targets: '.hero-aurora-a',
+      translateX: ['-6%', '6%'],
+      translateY: ['-5%', '7%'],
+      scale: [1, 1.14],
+      duration: 9000,
+      loop: true,
+      direction: 'alternate',
+      easing: 'easeInOutSine',
+    })
+    anime({
+      targets: '.hero-aurora-b',
+      translateX: ['5%', '-7%'],
+      translateY: ['4%', '-5%'],
+      scale: [1.1, 0.9],
+      duration: 11500,
+      loop: true,
+      direction: 'alternate',
+      easing: 'easeInOutSine',
+    })
+    anime({
+      targets: '.hero-aurora-c',
+      translateX: ['-4%', '6%'],
+      translateY: ['7%', '-6%'],
+      scale: [0.88, 1.1],
+      duration: 14000,
+      loop: true,
+      direction: 'alternate',
+      easing: 'easeInOutSine',
+    })
+    anime({
+      targets: '.cta-aurora-a',
+      translateX: ['-5%', '5%'],
+      translateY: ['-4%', '5%'],
+      scale: [1, 1.1],
+      duration: 10000,
+      loop: true,
+      direction: 'alternate',
+      easing: 'easeInOutSine',
+    })
+    anime({
+      targets: '.cta-aurora-b',
+      translateX: ['4%', '-6%'],
+      translateY: ['5%', '-4%'],
+      scale: [1.08, 0.92],
+      duration: 12000,
+      loop: true,
+      direction: 'alternate',
+      easing: 'easeInOutSine',
+    })
+  }, [])
+
+  /* ── Stats count-up ────────────────────────────────────────────────────── */
+  useEffect(() => {
+    const band = document.querySelector('.stats-band')
+    if (!band) return
+
+    const configs = [
+      { selector: '.stat-num.cyan',   from: 0, to: 150, prefix: '$', suffix: 'B+' },
+      { selector: '.stat-num.blue',   from: 0, to: 3,   prefix: '~', suffix: 's'  },
+      { selector: '.stat-num.purple', from: 0, to: 100, prefix: '',  suffix: '%'  },
+    ]
+
+    configs.forEach(({ selector }) => {
+      const el = band.querySelector(selector)
+      if (el) el.style.opacity = '0'
+    })
+
+    // "CERO" stat is text-only, just fade it in
+    const ceroEl = band.querySelector('.stat-num.green')
+    if (ceroEl) ceroEl.style.opacity = '0'
+
+    const obs = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting) return
+      if (ceroEl) anime({ targets: ceroEl, opacity: [0,1], duration: 900, easing: 'easeOutExpo' })
+      configs.forEach(({ selector, from, to, prefix, suffix }) => {
+        const el = band.querySelector(selector)
+        if (!el) return
+        const counter = { val: from }
+        anime({
+          targets: counter,
+          val: to,
+          round: 1,
+          duration: 1800,
+          easing: 'easeOutExpo',
+          update() {
+            el.textContent = prefix + counter.val + suffix
+            el.style.opacity = '1'
+          },
+        })
+      })
+      obs.disconnect()
+    }, { threshold: 0.4 })
+
+    obs.observe(band)
+    return () => obs.disconnect()
+  }, [])
+
+  /* ── Scroll-reveal helper ──────────────────────────────────────────────── */
+  useEffect(() => {
+    /* Stagger a group of children when their container enters the viewport */
+    const staggerGroup = (containerSel, childSel, staggerMs = 90) => {
+      const container = document.querySelector(containerSel)
+      if (!container) return
+      const children = [...container.querySelectorAll(childSel)]
+      children.forEach(el => { el.style.opacity = '0' })
+
+      const obs = new IntersectionObserver(([entry]) => {
+        if (!entry.isIntersecting) return
+        anime({
+          targets: children,
+          opacity: [0, 1],
+          translateY: [44, 0],
+          delay: anime.stagger(staggerMs),
+          duration: 750,
+          easing: 'easeOutExpo',
+        })
+        obs.disconnect()
+      }, { threshold: 0.1 })
+
+      obs.observe(container)
+      return () => obs.disconnect()
+    }
+
+    /* Fade-up individual elements independently */
+    const fadeUp = (selector, delayMs = 0) => {
+      const cleanups = [...document.querySelectorAll(selector)].map(el => {
+        el.style.opacity = '0'
+        const obs = new IntersectionObserver(([entry]) => {
+          if (!entry.isIntersecting) return
+          anime({ targets: el, opacity: [0, 1], translateY: [28, 0], delay: delayMs, duration: 700, easing: 'easeOutExpo' })
+          obs.disconnect()
+        }, { threshold: 0.2 })
+        obs.observe(el)
+        return () => obs.disconnect()
+      })
+      return () => cleanups.forEach(fn => fn?.())
+    }
+
+    const cleanups = [
+      staggerGroup('.why-grid',  '.why-card',  130),
+      staggerGroup('.how-grid',  '.how-card',  110),
+      staggerGroup('.tech-grid', '.tech-card',  90),
+      fadeUp('.section-eyebrow'),
+      fadeUp('.section-title',  80),
+      fadeUp('.section-sub',   160),
+      fadeUp('.privacy-layout', 120),
+      fadeUp('.data-layout',    120),
+      fadeUp('.compare-wrap',   150),
+    ]
+    return () => cleanups.forEach(fn => fn?.())
+  }, [])
+
+  /* ── Bar fill animations ───────────────────────────────────────────────── */
+  useEffect(() => {
+    const bars = [...document.querySelectorAll('.bar-fill')]
+    const targets = bars.map(bar => {
+      const targetW = bar.style.width || '0%'
+      bar.style.width = '0%'
+      bar.dataset.target = targetW
+      return bar
+    })
+
+    const obs = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (!entry.isIntersecting) return
+        const bar = entry.target
+        anime({
+          targets: bar,
+          width: bar.dataset.target,
+          duration: 1100,
+          easing: 'easeOutExpo',
+          delay: 120,
+        })
+        obs.unobserve(bar)
+      })
+    }, { threshold: 0.6 })
+
+    targets.forEach(bar => obs.observe(bar))
+    return () => obs.disconnect()
+  }, [])
+
+  /* ── Compare table rows stagger ────────────────────────────────────────── */
+  useEffect(() => {
+    const rows = [...document.querySelectorAll('.compare-table tbody tr')]
+    rows.forEach(r => { r.style.opacity = '0'; r.style.transform = 'translateX(-14px)' })
+
+    const table = document.querySelector('.compare-table')
+    if (!table) return
+
+    const obs = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting) return
+      anime({
+        targets: rows,
+        opacity: [0, 1],
+        translateX: [-14, 0],
+        delay: anime.stagger(60),
+        duration: 480,
+        easing: 'easeOutExpo',
+      })
+      obs.disconnect()
+    }, { threshold: 0.15 })
+
+    obs.observe(table)
+    return () => obs.disconnect()
+  }, [])
+
+  /* ── Hero logo parallax ─────────────────────────────────────────────────── */
+  useEffect(() => {
+    const logo = document.querySelector('.hero-logo-big')
+    if (!logo) return
+    const onScroll = () => {
+      const y = window.scrollY
+      logo.style.transform = `translateY(${y * 0.12}px)`
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+
+  /* ── Section title slide from left ─────────────────────────────────────── */
+  useEffect(() => {
+    const titles = [...document.querySelectorAll('.section-title')]
+    titles.forEach(el => { el.style.opacity = '0'; el.style.transform = 'translateX(-24px)' })
+
+    titles.forEach(el => {
+      const obs = new IntersectionObserver(([entry]) => {
+        if (!entry.isIntersecting) return
+        anime({ targets: el, opacity: [0, 1], translateX: [-24, 0], duration: 700, delay: 80, easing: 'easeOutExpo' })
+        obs.disconnect()
+      }, { threshold: 0.3 })
+      obs.observe(el)
+    })
+  }, [])
+
+  /* ── Stats band cell pop ────────────────────────────────────────────────── */
+  useEffect(() => {
+    const cells = [...document.querySelectorAll('.stat-cell')]
+    cells.forEach(c => { c.style.opacity = '0'; c.style.transform = 'translateY(16px)' })
+    const band = document.querySelector('.stats-band')
+    if (!band) return
+    const obs = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting) return
+      anime({
+        targets: cells,
+        opacity: [0, 1],
+        translateY: [16, 0],
+        delay: anime.stagger(100),
+        duration: 600,
+        easing: 'easeOutExpo',
+      })
+      obs.disconnect()
+    }, { threshold: 0.4 })
+    obs.observe(band)
+    return () => obs.disconnect()
+  }, [])
+
+  /* ── ZK circle pulse ───────────────────────────────────────────────────── */
+  useEffect(() => {
+    anime({
+      targets: '.zk-circle',
+      scale: [1, 1.07],
+      duration: 2600,
+      loop: true,
+      direction: 'alternate',
+      easing: 'easeInOutSine',
+    })
+  }, [])
+
   return (
     <div className="landing">
+      <canvas ref={canvasRef} className="bg-3d-canvas" aria-hidden="true" />
+      <div className="scroll-progress-bar" style={{ width: `${scrollPct}%` }} />
+      <div className="bg-grid" />
 
       {/* ── Nav ─────────────────────────────────────────────────────────── */}
       <nav className="land-nav">
@@ -118,7 +432,7 @@ export default function Landing({ onLaunch }) {
       </nav>
 
       {/* ── Hero ────────────────────────────────────────────────────────── */}
-      <section className="land-hero">
+     
         <div className="hero-aurora hero-aurora-a" />
         <div className="hero-aurora hero-aurora-b" />
         <div className="hero-aurora hero-aurora-c" />
@@ -148,7 +462,7 @@ export default function Landing({ onLaunch }) {
             <span className="chip chip-purple">Freighter Wallet</span>
           </div>
         </div>
-      </section>
+      
 
       {/* ── Stats band ──────────────────────────────────────────────────── */}
       <div className="stats-band">
@@ -159,8 +473,8 @@ export default function Landing({ onLaunch }) {
           </div>
           <div className="stat-sep" />
           <div className="stat-cell">
-            <span className="stat-num green">0</span>
-            <span className="stat-desc">datos personales on-chain</span>
+            <span className="stat-num green">CERO</span>
+            <span className="stat-desc">datos personales expuestos</span>
           </div>
           <div className="stat-sep" />
           <div className="stat-cell">
@@ -462,6 +776,16 @@ export default function Landing({ onLaunch }) {
                     <td className="td-bad">Baja</td>
                     <td className="td-good">Alta</td>
                   </tr>
+                  <tr>
+                    <td>Comisión por envío</td>
+                    <td className="td-bad">2 – 10 % del monto</td>
+                    <td className="td-good">~0.001 XLM (fee de red)</td>
+                  </tr>
+                  <tr>
+                    <td>Disponibilidad</td>
+                    <td className="td-neutral">Horario bancario</td>
+                    <td className="td-good">24 / 7 sin intermediarios</td>
+                  </tr>
                 </tbody>
               </table>
             </div>
@@ -529,7 +853,13 @@ export default function Landing({ onLaunch }) {
             No se requiere cuenta real. Usa Freighter en testnet y experimenta
             remesas privadas con ZK-proofs en acción.
           </p>
-          <button className="btn-hero-primary" onClick={onLaunch}>
+          <ul className="cta-checklist">
+            <li><span className="cta-check">✓</span> Instala la extensión <strong>Freighter</strong> en tu navegador</li>
+            <li><span className="cta-check">✓</span> Cambia a <strong>Stellar Testnet</strong> en los ajustes de Freighter</li>
+            <li><span className="cta-check">✓</span> Fondea tu cuenta con XLM testnet en <strong>friendbot.stellar.org</strong></li>
+            <li><span className="cta-check">✓</span> Abre Kage y sigue los 4 pasos — listo</li>
+          </ul>
+          <button className="btn-hero-primary cta-launch-btn" onClick={onLaunch}>
             Lanzar la App →
           </button>
         </div>
@@ -567,6 +897,13 @@ export default function Landing({ onLaunch }) {
               <span>Stellar Testnet</span>
               <span>USDC (testnet)</span>
               <span>Soroban RPC</span>
+            </div>
+            <div className="footer-col">
+              <h5>Recursos</h5>
+              <a href="https://freighter.app" target="_blank" rel="noopener noreferrer">Freighter Wallet</a>
+              <a href="https://friendbot.stellar.org" target="_blank" rel="noopener noreferrer">Stellar Friendbot</a>
+              <a href="https://stellar.expert/explorer/testnet" target="_blank" rel="noopener noreferrer">Stellar Explorer</a>
+              <a href="https://docs.circom.io" target="_blank" rel="noopener noreferrer">Circom Docs</a>
             </div>
           </div>
         </div>
